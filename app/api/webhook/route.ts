@@ -6,6 +6,7 @@ import { getHistory, saveMessages } from '@/lib/supabase'
 const openrouter = createOpenAI({
   baseURL: 'https://openrouter.ai/api/v1',
   apiKey: process.env.OPENROUTER_API_KEY,
+  compatibility: 'compatible',
 })
 
 const SYSTEM_PROMPT = process.env.SYSTEM_PROMPT ??
