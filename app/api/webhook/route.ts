@@ -6,7 +6,6 @@ import { getHistory, saveMessages } from '@/lib/supabase'
 const openrouter = createOpenAI({
   baseURL: 'https://openrouter.ai/api/v1',
   apiKey: process.env.OPENROUTER_API_KEY,
-  compatibility: 'compatible',
 })
 
 const SYSTEM_PROMPT = process.env.SYSTEM_PROMPT ??
@@ -23,7 +22,7 @@ export async function POST(req: Request) {
   const history = await getHistory(phone)
 
   const { text: reply } = await generateText({
-    model: openrouter(process.env.AI_MODEL ?? 'anthropic/claude-sonnet-4-5'),
+    model: openrouter.chat(process.env.AI_MODEL ?? 'anthropic/claude-sonnet-4-5'),
     system: SYSTEM_PROMPT,
     messages: [
       ...history.map((m) => ({ role: m.role, content: m.content })),
