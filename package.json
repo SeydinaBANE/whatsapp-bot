@@ -7,13 +7,19 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run lint && npm run typecheck",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": "eslint --fix"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.54",
     "@supabase/supabase-js": "^2.105.1",
     "ai": "^6.0.170",
-    "next": "16.2.4",
+    "next": "^16.2.6",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
@@ -23,6 +29,8 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.5",
     "typescript": "^5"
   }
 }
