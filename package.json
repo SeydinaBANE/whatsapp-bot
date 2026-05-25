@@ -30,7 +30,7 @@
     "*.{ts,tsx}": "eslint --fix"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^3.0.54",
+    "@ai-sdk/openai": "^3.0.65",
     "@supabase/supabase-js": "^2.105.1",
     "ai": "^6.0.170",
     "next": "^16.2.6",
