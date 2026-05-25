@@ -1,4 +1,4 @@
-.PHONY: install dev build start lint typecheck check webhook docker-build docker-run docker-stop
+.PHONY: install dev build start lint typecheck check test webhook docker-build docker-run docker-stop clean
 
 install:
 	npm install
@@ -20,6 +20,12 @@ typecheck:
 
 check:
 	npm run check
+
+test:
+	npm test
+
+clean:
+	rm -rf .next node_modules
 
 docker-build:
 	docker build -t whatsapp-bot .

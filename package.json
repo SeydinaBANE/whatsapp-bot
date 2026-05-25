@@ -22,6 +22,8 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "check": "npm run lint && npm run typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "prepare": "husky"
   },
   "lint-staged": {
@@ -43,6 +45,7 @@
     "eslint-config-next": "16.2.4",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.5",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.7"
   }
 }

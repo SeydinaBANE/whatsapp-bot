@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 
 export const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_ANON_KEY!
 )
 
 export type DbMessage = {
@@ -33,4 +33,15 @@ export async function saveMessages(
     { phone, role: 'user', content: userText },
     { phone, role: 'assistant', content: assistantText },
   ])
+}
+
+export async function isRateLimited(phone: string, maxPerMinute = 10): Promise<boolean> {
+  const { count } = await supabase
+    .from('messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('phone', phone)
+    .eq('role', 'user')
+    .gte('created_at', new Date(Date.now() - 60_000).toISOString())
+
+  return (count ?? 0) >= maxPerMinute
 }
