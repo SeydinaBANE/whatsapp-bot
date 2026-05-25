@@ -10,12 +10,13 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Variables placeholder pour que next build passe sans accès réseau
-ENV WAZENDER_API_KEY=placeholder \
-    OPENROUTER_API_KEY=placeholder \
-    NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
-    NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder \
-    NEXT_TELEMETRY_DISABLED=1
+# ARG (pas ENV) — valeurs placeholder visibles par npm run build
+# mais non stockées dans les layers de l'image finale
+ARG WAZENDER_API_KEY=placeholder
+ARG OPENROUTER_API_KEY=placeholder
+ARG NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder
+ARG NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build
 
