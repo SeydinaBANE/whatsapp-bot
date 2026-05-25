@@ -2,7 +2,19 @@
   "name": "whatsapp-bot",
   "version": "1.0.0",
   "description": "WhatsApp AI chatbot — Wazender + Claude + Supabase",
+  "license": "MIT",
   "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SeydinaBANE/whatsapp-bot.git"
+  },
+  "homepage": "https://github.com/SeydinaBANE/whatsapp-bot#readme",
+  "bugs": {
+    "url": "https://github.com/SeydinaBANE/whatsapp-bot/issues"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",

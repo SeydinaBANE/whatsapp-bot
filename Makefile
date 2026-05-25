@@ -1,4 +1,4 @@
-.PHONY: install dev build start lint typecheck check webhook
+.PHONY: install dev build start lint typecheck check webhook docker-build docker-run docker-stop
 
 install:
 	npm install
@@ -20,6 +20,15 @@ typecheck:
 
 check:
 	npm run check
+
+docker-build:
+	docker build -t whatsapp-bot .
+
+docker-run:
+	docker run --rm -p 3000:3000 --env-file .env whatsapp-bot
+
+docker-stop:
+	docker stop $$(docker ps -q --filter ancestor=whatsapp-bot) 2>/dev/null || true
 
 # Simule un message entrant sur le webhook local
 webhook:
