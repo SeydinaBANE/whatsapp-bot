@@ -155,9 +155,19 @@ model: openrouter.chat('anthropic/claude-sonnet-4-5')
 model: openrouter('anthropic/claude-sonnet-4-5')
 ```
 
+## Documentation
+
+| Document | Contenu |
+|---|---|
+| [`DOCUMENTATION.md`](./DOCUMENTATION.md) | Guide d'utilisation — personnalisation, filtres, horaires, modèles |
+| [`CONTRIBUTING.md`](./CONTRIBUTING.md) | Workflow de développement, setup local, ouvrir une PR |
+| [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | Architecture technique, diagrammes, décisions de conception |
+| [`docs/API.md`](./docs/API.md) | Référence des endpoints — schémas, codes de retour, exemples curl |
+| [`docs/SECURITY.md`](./docs/SECURITY.md) | Analyse de sécurité et recommandations |
+
 ## Contribuer
 
-Les PRs sont les bienvenues. Ouvre une issue pour discuter d'une nouvelle fonctionnalité avant de coder.
+Voir [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
 ## Licence
 

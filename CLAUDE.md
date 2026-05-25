@@ -52,6 +52,16 @@ supabase/
 
 TypeScript path alias `@/` resolves to the project root.
 
+## Documentation technique
+
+| Fichier | Contenu |
+|---|---|
+| `docs/ARCHITECTURE.md` | Diagrammes, décisions de conception, limites |
+| `docs/API.md` | Référence complète des endpoints et contrats externes |
+| `docs/SECURITY.md` | Analyse de sécurité, points d'attention, recommandations |
+| `CONTRIBUTING.md` | Workflow de dev, pre-commit, CI |
+| `DOCUMENTATION.md` | Guide utilisateur (personnalisation, filtres, prompts) |
+
 ## AI Stack
 
 Uses **Vercel AI SDK** (`ai` v6) with the `@ai-sdk/openai` adapter pointed at OpenRouter:
