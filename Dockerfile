@@ -14,8 +14,8 @@ COPY . .
 # mais non stockées dans les layers de l'image finale
 ARG WAZENDER_API_KEY=placeholder
 ARG OPENROUTER_API_KEY=placeholder
-ARG NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co
-ARG NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder
+ARG SUPABASE_URL=https://placeholder.supabase.co
+ARG SUPABASE_ANON_KEY=placeholder
 ARG NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build
