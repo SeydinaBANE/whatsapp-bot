@@ -1,10 +1,13 @@
 # whatsapp-bot
 
-Chatbot WhatsApp propulsé par l'AI — répond automatiquement aux messages entrants avec un contexte de conversation. Personnalisable sans toucher au code, déployable sur Vercel en quelques minutes.
+Chatbot WhatsApp propulsé par l'AI — répond automatiquement aux messages entrants avec un contexte de conversation. Personnalisable sans toucher au code, déployable sur Vercel ou Docker en quelques minutes.
 
+[![CI](https://github.com/SeydinaBANE/whatsapp-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/SeydinaBANE/whatsapp-bot/actions/workflows/ci.yml)
+[![Docker](https://github.com/SeydinaBANE/whatsapp-bot/actions/workflows/docker.yml/badge.svg)](https://github.com/SeydinaBANE/whatsapp-bot/actions/workflows/docker.yml)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)](https://www.typescriptlang.org)
+[![Docker Image](https://ghcr-badge.egpl.dev/seydinabane/whatsapp-bot/size)](https://github.com/SeydinaBANE/whatsapp-bot/pkgs/container/whatsapp-bot)
 
 ## Comment ça fonctionne
 
@@ -40,11 +43,12 @@ POST /api/webhook  ←── ton serveur
 | AI | Vercel AI SDK v6 + OpenRouter |
 | WhatsApp | [Wazender](https://wasenderapi.com) |
 | Base de données | Supabase (Postgres) |
-| Déploiement | Vercel |
+| Déploiement | Vercel · Docker (ghcr.io) |
+| CI/CD | GitHub Actions · Dependabot |
 
 ## Démarrage rapide
 
-**Prérequis :** Node.js 18+, un compte [Wazender](https://wasenderapi.com) avec une session WhatsApp connectée, un compte [OpenRouter](https://openrouter.ai), un projet [Supabase](https://supabase.com).
+**Prérequis :** Node.js 20+, un compte [Wazender](https://wasenderapi.com) avec une session WhatsApp connectée, un compte [OpenRouter](https://openrouter.ai), un projet [Supabase](https://supabase.com).
 
 **1. Cloner et installer**
 
@@ -77,38 +81,47 @@ Dans ton projet Supabase → SQL Editor, exécute [`supabase/migration.sql`](./s
 
 ```bash
 npm run dev
+# ou
+make dev
 ```
 
 **5. Tester le webhook**
 
 ```bash
-curl -X POST http://localhost:3000/api/webhook \
-  -H "Content-Type: application/json" \
-  -d '{
-    "event": "messages.received",
-    "timestamp": 1234567890,
-    "data": {
-      "messages": {
-        "key": { "id": "TEST1", "fromMe": false, "remoteJid": "test@s.whatsapp.net", "cleanedSenderPn": "+221700000000" },
-        "messageBody": "Bonjour !"
-      }
-    }
-  }'
+make webhook
+# équivalent curl vers http://localhost:3000/api/webhook
 ```
 
-## Déploiement sur Vercel
+## Déploiement
+
+### Option A — Vercel (recommandé)
 
 1. Pousse le repo sur GitHub
 2. Importe le projet sur [vercel.com/new](https://vercel.com/new)
 3. Ajoute les variables d'environnement dans **Settings → Environment Variables**
 4. Déploie — Vercel redéploiera automatiquement à chaque `git push`
 
+### Option B — Docker (self-hosted)
+
+```bash
+# Récupérer l'image depuis GitHub Container Registry
+docker pull ghcr.io/seydinabane/whatsapp-bot:main
+
+# Lancer avec les vraies variables d'environnement
+docker run -p 3000:3000 --env-file .env ghcr.io/seydinabane/whatsapp-bot:main
+
+# Ou builder localement
+make docker-build && make docker-run
+```
+
 **Configurer le webhook dans Wazender**
 
-Après déploiement, copie l'URL générée et colle-la dans wasenderapi.com → ta session → Webhook :
+Après déploiement, copie l'URL de ton serveur et colle-la dans wasenderapi.com → ta session → Webhook :
 
 ```
 https://ton-projet.vercel.app/api/webhook
+# ou
+https://ton-domaine.com/api/webhook
 ```
 
 ## Personnaliser le bot
@@ -142,18 +155,6 @@ if (heure < 8 || heure > 18) {
 ```
 
 Consulte [`DOCUMENTATION.md`](./DOCUMENTATION.md) pour tous les cas d'usage détaillés.
-
-## Problème connu
-
-Avec `@ai-sdk/openai` v3+, utilise `.chat()` pour forcer l'endpoint `/chat/completions` — OpenRouter ne supporte pas encore `/responses` :
-
-```ts
-// ✅ correct
-model: openrouter.chat('anthropic/claude-sonnet-4-5')
-
-// ❌ erreur 400 Invalid Responses API request
-model: openrouter('anthropic/claude-sonnet-4-5')
-```
 
 ## Documentation
 
