@@ -1,10 +1,11 @@
 import { createOpenAI } from '@ai-sdk/openai'
 import { generateText } from 'ai'
+import { requireEnv } from '@/config/env'
 import type { AiResponderPort } from '@/core/ports/outbound/ai-responder.port'
 
 const openrouter = createOpenAI({
   baseURL: 'https://openrouter.ai/api/v1',
-  apiKey: process.env.OPENROUTER_API_KEY,
+  apiKey: requireEnv('OPENROUTER_API_KEY'),
 })
 
 const SYSTEM_PROMPT = process.env.SYSTEM_PROMPT ??

@@ -1,7 +1,8 @@
+import { requireEnv } from '@/config/env'
 import type { MessagingPort } from '@/core/ports/outbound/messaging.port'
 
 const BASE_URL = 'https://www.wasenderapi.com/api'
-const API_KEY = process.env.WAZENDER_API_KEY!
+const API_KEY = requireEnv('WAZENDER_API_KEY')
 
 export const wazenderMessagingAdapter: MessagingPort = {
   async sendMessage(to, text) {

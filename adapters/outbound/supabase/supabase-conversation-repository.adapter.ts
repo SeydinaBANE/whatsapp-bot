@@ -1,10 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
+import { requireEnv } from '@/config/env'
 import type { ChatMessage } from '@/core/domain/conversation'
 import type { ConversationRepositoryPort } from '@/core/ports/outbound/conversation-repository.port'
 
 const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_ANON_KEY!
+  requireEnv('SUPABASE_URL'),
+  requireEnv('SUPABASE_ANON_KEY')
 )
 
 export const supabaseConversationRepository: ConversationRepositoryPort = {
