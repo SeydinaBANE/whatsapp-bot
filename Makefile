@@ -1,5 +1,9 @@
 .PHONY: install dev build start lint typecheck check test webhook docker-build docker-run docker-stop clean
 
+# Charge .env si présent (pour WEBHOOK_SECRET dans la target webhook, entre autres)
+-include .env
+export
+
 install:
 	npm install
 
@@ -36,9 +40,9 @@ docker-run:
 docker-stop:
 	docker stop $$(docker ps -q --filter ancestor=whatsapp-bot) 2>/dev/null || true
 
-# Simule un message entrant sur le webhook local
+# Simule un message entrant sur le webhook local (token lu depuis .env)
 webhook:
-	@curl -s -X POST http://localhost:3000/api/webhook \
+	@curl -s -X POST "http://localhost:3000/api/webhook?token=$(WEBHOOK_SECRET)" \
 	  -H "Content-Type: application/json" \
 	  -d '{ \
 	    "event": "messages.received", \

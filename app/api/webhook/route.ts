@@ -1,7 +1,15 @@
+import { requireEnv } from '@/config/env'
 import { parseIncoming, type WazenderWebhookPayload } from '@/adapters/inbound/wazender/parse-incoming'
+import { isAuthorizedWebhookRequest } from '@/adapters/inbound/wazender/verify-webhook-secret'
 import { handleIncomingMessage } from '@/config/container'
 
+const WEBHOOK_SECRET = requireEnv('WEBHOOK_SECRET')
+
 export async function POST(req: Request) {
+  if (!isAuthorizedWebhookRequest(new URL(req.url), WEBHOOK_SECRET)) {
+    return new Response('unauthorized', { status: 401 })
+  }
+
   let payload: WazenderWebhookPayload
   try {
     payload = await req.json()

@@ -40,3 +40,4 @@ jobs:
           OPENROUTER_API_KEY: placeholder
           SUPABASE_URL: https://placeholder.supabase.co
           SUPABASE_ANON_KEY: placeholder
+          WEBHOOK_SECRET: placeholder
