@@ -17,6 +17,7 @@ ARG OPENROUTER_API_KEY=placeholder
 ARG SUPABASE_URL=https://placeholder.supabase.co
 ARG SUPABASE_ANON_KEY=placeholder
 ARG WEBHOOK_SECRET=placeholder
+ARG CRON_SECRET=placeholder
 ARG NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build

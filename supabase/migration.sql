@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS messages (
 
 CREATE INDEX IF NOT EXISTS idx_messages_phone ON messages(phone);
 CREATE INDEX IF NOT EXISTS idx_messages_phone_created ON messages(phone, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
 
 -- RLS: open access
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;

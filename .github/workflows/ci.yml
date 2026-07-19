@@ -41,3 +41,4 @@ jobs:
           SUPABASE_URL: https://placeholder.supabase.co
           SUPABASE_ANON_KEY: placeholder
           WEBHOOK_SECRET: placeholder
+          CRON_SECRET: placeholder

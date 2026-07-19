@@ -37,4 +37,14 @@ export const supabaseConversationRepository: ConversationRepositoryPort = {
 
     return (count ?? 0) >= maxPerMinute
   },
+
+  async purgeOlderThan(days) {
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
+    const { count } = await supabase
+      .from('messages')
+      .delete({ count: 'exact' })
+      .lt('created_at', cutoff)
+
+    return count ?? 0
+  },
 }

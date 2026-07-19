@@ -15,6 +15,7 @@ function makeDeps(overrides: Partial<{
     getHistory: vi.fn().mockResolvedValue([]),
     saveMessages: vi.fn().mockResolvedValue(undefined),
     isRateLimited: vi.fn().mockResolvedValue(isRateLimited),
+    purgeOlderThan: vi.fn().mockResolvedValue(0),
   }
 
   const aiResponder: AiResponderPort = {
