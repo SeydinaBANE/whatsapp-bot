@@ -32,11 +32,11 @@ if (sig !== expected) return new Response('unauthorized', { status: 401 })
 
 #### 2. Variables `NEXT_PUBLIC_` côté serveur
 
-Les variables Supabase sont nommées `NEXT_PUBLIC_SUPABASE_URL` et `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Le préfixe `NEXT_PUBLIC_` les expose au bundle client JavaScript — or ici elles ne sont utilisées que côté serveur (`lib/supabase.ts` est importé uniquement dans `route.ts`).
+Les variables Supabase sont nommées `NEXT_PUBLIC_SUPABASE_URL` et `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Le préfixe `NEXT_PUBLIC_` les expose au bundle client JavaScript — or ici elles ne sont utilisées que côté serveur (`adapters/outbound/supabase/supabase-conversation-repository.adapter.ts` est importé uniquement via `config/container.ts`, jamais côté client).
 
 **Impact réel :** la clé `anon` Supabase est faite pour être publique (elle est soumise aux politiques RLS). La politique actuelle est ouverte (`USING (true)`), donc cela n'expose pas de données supplémentaires.
 
-**Recommandation :** renommer en `SUPABASE_URL` / `SUPABASE_ANON_KEY` pour clarifier qu'elles sont serveur-only, et mettre à jour `lib/supabase.ts` en conséquence.
+**Recommandation :** renommer en `SUPABASE_URL` / `SUPABASE_ANON_KEY` pour clarifier qu'elles sont serveur-only, et mettre à jour `adapters/outbound/supabase/supabase-conversation-repository.adapter.ts` en conséquence.
 
 #### 3. Pas de rate limiting
 

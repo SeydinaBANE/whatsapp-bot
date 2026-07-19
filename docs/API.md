@@ -85,7 +85,7 @@ make webhook
 
 ## Wazender — Send Message
 
-Utilisé par `sendMessage()` dans `lib/wazender.ts`.
+Utilisé par `wazenderMessagingAdapter.sendMessage()` dans `adapters/outbound/wazender/wazender-messaging.adapter.ts`.
 
 ```
 POST https://www.wasenderapi.com/api/send-message
@@ -120,4 +120,4 @@ Content-Type: application/json
 }
 ```
 
-> Toujours appeler `openrouter.chat(model)` et non `openrouter(model)` — voir [Architecture](./ARCHITECTURE.md#apiapiwebhookroutets).
+> Toujours appeler `openrouter.chat(model)` et non `openrouter(model)` — voir [Architecture](./ARCHITECTURE.md#adaptersoutboundopenrouteropenrouter-ai-responderadapterts).

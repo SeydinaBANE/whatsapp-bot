@@ -32,13 +32,15 @@ POST /api/webhook  (ton serveur)
    Supabase → sauvegarde le message + la réponse
 ```
 
-**Fichiers principaux :**
+**Fichiers principaux** (architecture hexagonale — voir [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md)) :
 
 | Fichier | Rôle |
 |---|---|
-| `app/api/webhook/route.ts` | Point d'entrée — orchestre tout le flow |
-| `lib/wazender.ts` | Parse les messages entrants, envoie les réponses |
-| `lib/supabase.ts` | Lit et écrit l'historique des conversations |
+| `app/api/webhook/route.ts` | Point d'entrée HTTP — parse la requête, délègue, mappe la réponse |
+| `core/use-cases/handle-incoming-message.use-case.ts` | Logique métier — orchestre le flow (c'est ici qu'on ajoute des règles) |
+| `adapters/inbound/wazender/parse-incoming.ts` | Traduit le webhook Wazender en message du domaine |
+| `adapters/outbound/wazender/wazender-messaging.adapter.ts` | Envoie les réponses sur WhatsApp |
+| `adapters/outbound/supabase/supabase-conversation-repository.adapter.ts` | Lit et écrit l'historique des conversations |
 
 ---
 
@@ -99,46 +101,43 @@ AI_MODEL=meta-llama/llama-3.3-70b-instruct
 
 ## Modifier la logique du bot
 
-Le fichier principal est `app/api/webhook/route.ts` :
+`app/api/webhook/route.ts` ne fait que parser la requête et déléguer — la logique métier vit dans `core/use-cases/handle-incoming-message.use-case.ts` :
 
 ```typescript
-export async function POST(req: Request) {
-  const payload = await req.json()
-
-  // 1. Parse le message entrant (retourne null si ignoré)
-  const incoming = parseIncoming(payload)
-  if (!incoming) return new Response('ignored', { status: 200 })
-
-  const { phone, text } = incoming
+async execute({ phone, text }: IncomingMessage): Promise<HandleIncomingMessageOutcome> {
+  // 1. Rate limiting
+  if (await deps.conversationRepository.isRateLimited(phone)) {
+    return 'rate_limited'
+  }
 
   // 2. Récupère l'historique
-  const history = await getHistory(phone)
+  const history = await deps.conversationRepository.getHistory(phone)
 
-  // 3. Génère la réponse avec Claude
-  const { text: reply } = await generateText({
-    model: openrouter(process.env.AI_MODEL ?? 'anthropic/claude-sonnet-4-5'),
-    system: SYSTEM_PROMPT,
-    messages: [
-      ...history.map((m) => ({ role: m.role, content: m.content })),
-      { role: 'user', content: text },
-    ],
-  })
+  try {
+    // 3. Génère la réponse avec Claude (via l'adapter OpenRouter)
+    const reply = await deps.aiResponder.reply(history, text)
 
-  // 4. Envoie la réponse et sauvegarde
-  await sendMessage(phone, reply)
-  await saveMessages(phone, text, reply)
+    // 4. Envoie la réponse et sauvegarde
+    await deps.messaging.sendMessage(phone, reply)
+    await deps.conversationRepository.saveMessages(phone, text, reply)
+  } catch (err) {
+    console.error('[handle-incoming-message] error:', err)
+    await deps.messaging.sendMessage(phone, FALLBACK_REPLY).catch(() => null)
+  }
 
-  return new Response('ok', { status: 200 })
+  return 'ok'
 }
 ```
+
+`deps` regroupe les 3 adapters câblés dans `config/container.ts` (`conversationRepository`, `aiResponder`, `messaging`). Pour changer un comportement, modifie cette fonction plutôt que `route.ts`.
 
 ---
 
 ## Filtrer certains messages
 
-Ajoute des conditions juste après `parseIncoming()` dans `app/api/webhook/route.ts`.
+### Ignorer un numéro spécifique, ou répondre seulement sur mot-clé
 
-### Ignorer un numéro spécifique
+Ces filtres n'ont besoin que du message parsé (`incoming`), pas d'envoyer de message — ils peuvent rester dans `app/api/webhook/route.ts`, juste après `parseIncoming()` :
 
 ```typescript
 const incoming = parseIncoming(payload)
@@ -151,8 +150,6 @@ if (BLOCKED.includes(incoming.phone)) {
 }
 ```
 
-### Répondre seulement si le message contient un mot-clé
-
 ```typescript
 const KEYWORDS = ['aide', 'help', 'bonjour', 'hello', 'commande']
 const hasKeyword = KEYWORDS.some(k => incoming.text.toLowerCase().includes(k))
@@ -162,11 +159,17 @@ if (!hasKeyword) return new Response('ignored', { status: 200 })
 
 ### Répondre seulement entre certaines heures
 
+Cette règle envoie un message WhatsApp — c'est une décision métier, elle va donc dans `core/use-cases/handle-incoming-message.use-case.ts`, en tête de `execute()` :
+
 ```typescript
-const hour = new Date().getHours() // heure UTC
-if (hour < 8 || hour > 18) {
-  await sendMessage(incoming.phone, 'Nous sommes fermés. Nos horaires : 8h-18h du lundi au vendredi.')
-  return new Response('outside hours', { status: 200 })
+async execute({ phone, text }: IncomingMessage): Promise<HandleIncomingMessageOutcome> {
+  const hour = new Date().getHours() // heure UTC
+  if (hour < 8 || hour > 18) {
+    await deps.messaging.sendMessage(phone, 'Nous sommes fermés. Nos horaires : 8h-18h du lundi au vendredi.')
+    return 'ok'
+  }
+
+  // ... suite normale (rate limit, historique, LLM, envoi, sauvegarde)
 }
 ```
 
@@ -174,17 +177,17 @@ if (hour < 8 || hour > 18) {
 
 ## Changer la profondeur d'historique
 
-Par défaut le bot se souvient des **20 derniers messages**. Pour modifier, édite `lib/supabase.ts` :
+Par défaut le bot se souvient des **20 derniers messages**. Pour modifier, édite `adapters/outbound/supabase/supabase-conversation-repository.adapter.ts` :
 
 ```typescript
-// Ligne 17 — change la valeur par défaut
-export async function getHistory(phone: string, limit = 20) {
+// change la valeur par défaut
+async getHistory(phone, limit = 20) {
 ```
 
-Ou passe la valeur manuellement dans `route.ts` :
+Ou passe la valeur manuellement dans `core/use-cases/handle-incoming-message.use-case.ts` :
 
 ```typescript
-const history = await getHistory(phone, 10) // 10 messages seulement
+const history = await deps.conversationRepository.getHistory(phone, 10) // 10 messages seulement
 ```
 
 > **Note :** Plus l'historique est long, plus chaque requête coûte de tokens. Pour un bot simple, 10-20 messages est suffisant.
@@ -193,29 +196,29 @@ const history = await getHistory(phone, 10) // 10 messages seulement
 
 ## Ajouter des réponses automatiques
 
-Pour certains messages simples, tu peux court-circuiter l'AI et répondre directement.
+Pour certains messages simples, tu peux court-circuiter l'AI et répondre directement — toujours dans `core/use-cases/handle-incoming-message.use-case.ts` :
 
 ```typescript
-const incoming = parseIncoming(payload)
-if (!incoming) return new Response('ignored', { status: 200 })
+async execute({ phone, text }: IncomingMessage): Promise<HandleIncomingMessageOutcome> {
+  const lower = text.toLowerCase()
 
-const { phone, text } = incoming
-const lower = text.toLowerCase()
+  // Réponses automatiques sans passer par l'AI
+  if (lower === 'stop' || lower === 'désabonner') {
+    await deps.messaging.sendMessage(phone, 'Vous avez été désabonné. Tapez START pour vous réabonner.')
+    return 'ok'
+  }
 
-// Réponses automatiques sans passer par l'AI
-if (lower === 'stop' || lower === 'désabonner') {
-  await sendMessage(phone, 'Vous avez été désabonné. Tapez START pour vous réabonner.')
-  return new Response('ok', { status: 200 })
+  if (lower === 'horaires') {
+    await deps.messaging.sendMessage(phone, 'Nos horaires : Lun-Ven 9h-18h, Sam 9h-13h.')
+    return 'ok'
+  }
+
+  // Sinon → suite normale (rate limit, historique, LLM, envoi, sauvegarde)
+  if (await deps.conversationRepository.isRateLimited(phone)) {
+    return 'rate_limited'
+  }
+  // ...
 }
-
-if (lower === 'horaires') {
-  await sendMessage(phone, 'Nos horaires : Lun-Ven 9h-18h, Sam 9h-13h.')
-  return new Response('ok', { status: 200 })
-}
-
-// Sinon → passe par l'AI
-const history = await getHistory(phone)
-// ... suite normale
 ```
 
 ---

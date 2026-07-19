@@ -58,24 +58,31 @@ La PR ne peut pas être mergée si la CI échoue.
 
 ## Ajouter une fonctionnalité
 
-Le point d'entrée est `app/api/webhook/route.ts`. La logique s'intercale entre les étapes existantes :
+Le projet suit une architecture hexagonale (ports & adapters) — voir [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) pour le détail des couches. Le point d'entrée HTTP est `app/api/webhook/route.ts`, mais la logique métier vit dans `core/use-cases/handle-incoming-message.use-case.ts` :
 
 ```typescript
-const incoming = parseIncoming(payload)
-if (!incoming) return new Response('ignored', { status: 200 })
+async execute({ phone, text }: IncomingMessage): Promise<HandleIncomingMessageOutcome> {
+  if (await deps.conversationRepository.isRateLimited(phone)) {
+    return 'rate_limited'
+  }
 
-const { phone, text } = incoming
+  const history = await deps.conversationRepository.getHistory(phone)
 
-// ← TES RÈGLES ICI (filtres, réponses automatiques, rate limiting…)
+  // ← TES RÈGLES ICI (filtres, réponses automatiques…)
 
-const history = await getHistory(phone)
-const { text: reply } = await generateText({ ... })
+  try {
+    const reply = await deps.aiResponder.reply(history, text)
+    await deps.messaging.sendMessage(phone, reply)
+    await deps.conversationRepository.saveMessages(phone, text, reply)
+  } catch (err) {
+    // ...
+  }
 
-// ← OU ICI (post-traitement de la réponse)
-
-await sendMessage(phone, reply)
-await saveMessages(phone, text, reply)
+  return 'ok'
+}
 ```
+
+Pour ajouter une nouvelle intégration externe (ex: un second canal de messagerie), crée un nouvel adapter sous `adapters/outbound/` qui implémente le port correspondant (`core/ports/outbound/`), puis câble-le dans `config/container.ts` — le use case n'a rien à changer.
 
 Consulte [`DOCUMENTATION.md`](./DOCUMENTATION.md) pour des exemples concrets (filtres, horaires, réponses automatiques).
 
@@ -83,14 +90,22 @@ Consulte [`DOCUMENTATION.md`](./DOCUMENTATION.md) pour des exemples concrets (fi
 
 1. Édite `supabase/migration.sql` avec ta migration
 2. Exécute-la dans le SQL Editor Supabase
-3. Mets à jour les types dans `lib/supabase.ts` si nécessaire
+3. Mets à jour les types dans `adapters/outbound/supabase/supabase-conversation-repository.adapter.ts` si nécessaire
 
 ## Structure des fichiers
 
 ```
-app/api/webhook/route.ts   — orchestrateur principal (modifier ici en priorité)
-lib/wazender.ts            — contrat Wazender (parseIncoming + sendMessage)
-lib/supabase.ts            — contrat Supabase (getHistory + saveMessages)
+app/api/webhook/route.ts                                          — adapter HTTP entrant (thin)
+core/
+  domain/conversation.ts                                          — types du domaine
+  ports/{inbound,outbound}/*.ts                                    — interfaces (contrats)
+  use-cases/handle-incoming-message.use-case.ts                    — logique métier (modifier ici en priorité)
+adapters/
+  inbound/wazender/parse-incoming.ts                               — traduction webhook Wazender → domaine
+  outbound/wazender/wazender-messaging.adapter.ts                  — envoi WhatsApp
+  outbound/supabase/supabase-conversation-repository.adapter.ts    — historique + rate limit
+  outbound/openrouter/openrouter-ai-responder.adapter.ts           — génération LLM
+config/container.ts        — composition root (câble les adapters au use case)
 supabase/migration.sql     — schéma de la base
 docs/                      — documentation technique
   ARCHITECTURE.md          — diagrammes et décisions de conception

@@ -15,7 +15,7 @@ npm run check      # lint + typecheck
 
 Raccourcis Makefile disponibles : `make dev`, `make build`, `make lint`, `make check`, `make webhook` (envoie un curl de test au webhook local).
 
-No test suite is configured. There is no `test` script.
+`npm test` (Vitest) runs the unit tests — `adapters/inbound/wazender/parse-incoming.test.ts` and `core/use-cases/handle-incoming-message.use-case.test.ts`.
 
 ## Pre-commit hooks
 
@@ -36,19 +36,30 @@ Le déploiement en production est géré par **Vercel** directement depuis GitHu
 
 ## Architecture
 
-**Minimal Next.js 16 app — no UI, only one API route.**
+**Minimal Next.js 16 app — no UI, only one API route — built as a hexagonal (ports & adapters) application.** See `docs/ARCHITECTURE.md` for the full breakdown.
 
 ```
 app/
-  api/webhook/route.ts   — POST: receives Wazender webhooks, calls Claude, replies on WhatsApp
+  api/webhook/route.ts   — POST: thin HTTP adapter, parses the request and delegates
   layout.tsx             — minimal root layout
   page.tsx               — status page only
-lib/
-  wazender.ts            — parseIncoming() + sendMessage()
-  supabase.ts            — getHistory(phone) + saveMessages(phone, user, assistant)
+core/
+  domain/conversation.ts                       — ChatMessage, IncomingMessage
+  ports/inbound/handle-incoming-message.port.ts — use case contract
+  ports/outbound/{messaging,conversation-repository,ai-responder}.port.ts
+  use-cases/handle-incoming-message.use-case.ts — business logic (rate limit → history → LLM → send → save)
+adapters/
+  inbound/wazender/parse-incoming.ts                              — WazenderWebhookPayload → IncomingMessage
+  outbound/wazender/wazender-messaging.adapter.ts                 — implements MessagingPort
+  outbound/supabase/supabase-conversation-repository.adapter.ts   — implements ConversationRepositoryPort
+  outbound/openrouter/openrouter-ai-responder.adapter.ts          — implements AiResponderPort
+config/
+  container.ts           — composition root: wires the 3 outbound adapters into the use case
 supabase/
   migration.sql          — single `messages` table, indexed by phone
 ```
+
+Dependency rule: `core/` never imports from `adapters/`. Only `config/container.ts` knows both.
 
 TypeScript path alias `@/` resolves to the project root.
 
@@ -78,21 +89,23 @@ const openrouter = createOpenAI({
 ## Flow
 
 ```
-POST /api/webhook
-  → parseIncoming()       — filter fromMe=true and non-message events
-  → getHistory(phone)     — last 20 messages from Supabase
-  → generateText()        — Claude via OpenRouter with history as context
-  → sendMessage(phone)    — Wazender API (wasenderapi.com)
-  → saveMessages()        — persist user + assistant messages to Supabase
+POST /api/webhook                          — app/api/webhook/route.ts (inbound HTTP adapter)
+  → parseIncoming()                        — filter fromMe=true and non-message events
+  → handleIncomingMessage.execute()        — core/use-cases/handle-incoming-message.use-case.ts
+      → conversationRepository.isRateLimited(phone)
+      → conversationRepository.getHistory(phone)   — last 20 messages from Supabase
+      → aiResponder.reply()                        — Claude via OpenRouter with history as context
+      → messaging.sendMessage(phone)                — Wazender API (wasenderapi.com)
+      → conversationRepository.saveMessages()       — persist user + assistant messages to Supabase
 ```
 
 ## Key env vars
 
 | Var | Used in |
 |---|---|
-| `WAZENDER_API_KEY` | `lib/wazender.ts` — Bearer token for Wazender API |
-| `OPENROUTER_API_KEY` | `app/api/webhook/route.ts` — OpenRouter auth |
-| `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `lib/supabase.ts` |
+| `WAZENDER_API_KEY` | `adapters/outbound/wazender/wazender-messaging.adapter.ts` — Bearer token for Wazender API |
+| `OPENROUTER_API_KEY` | `adapters/outbound/openrouter/openrouter-ai-responder.adapter.ts` — OpenRouter auth |
+| `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `adapters/outbound/supabase/supabase-conversation-repository.adapter.ts` |
 | `AI_MODEL` | Optional, defaults to `anthropic/claude-sonnet-4-5` |
 | `SYSTEM_PROMPT` | Optional, controls bot persona |
 
