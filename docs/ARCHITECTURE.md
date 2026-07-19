@@ -22,6 +22,7 @@ L'application est un serveur webhook **stateless** : elle ne garde aucun état e
 │                                                                 │
 │  app/api/webhook/route.ts  (adapter HTTP entrant)               │
 │  ┌─────────────────────────────────────────────────────────┐   │
+│  │ 0. isAuthorizedWebhookRequest() → vérifie ?token=       │   │
 │  │ 1. parseIncoming()          → filtre, extrait phone+text│   │
 │  │ 2. handleIncomingMessage()  → use case core/             │   │
 │  │      2a. isRateLimited()    → Supabase                  │   │
@@ -70,20 +71,34 @@ core/
 
 adapters/
   inbound/wazender/parse-incoming.ts                              — traduit le webhook Wazender en IncomingMessage
+  inbound/wazender/verify-webhook-secret.ts                       — vérifie le ?token= du webhook
+  inbound/cron/verify-cron-secret.ts                               — vérifie le header Authorization du cron
   outbound/wazender/wazender-messaging.adapter.ts                 — implémente MessagingPort
   outbound/supabase/supabase-conversation-repository.adapter.ts   — implémente ConversationRepositoryPort
   outbound/openrouter/openrouter-ai-responder.adapter.ts          — implémente AiResponderPort
 
-config/container.ts   — composition root : câble les 3 adapters outbound au use case
+config/
+  env.ts         — requireEnv() : validation explicite des variables requises
+  container.ts   — composition root : câble les 3 adapters outbound au use case
 
-app/api/webhook/route.ts   — adapter HTTP entrant (seul point qui connaît Request/Response)
+app/api/webhook/route.ts                    — adapter HTTP entrant (webhook Wazender)
+app/api/health/route.ts                     — liveness check pour le monitoring externe
+app/api/cron/purge-old-messages/route.ts    — purge programmée (rétention des messages)
 ```
 
 **Règle de dépendance :** `core/` n'importe jamais depuis `adapters/`. Les adapters importent les types de `core/ports` et `core/domain`, jamais l'inverse. `config/container.ts` est le seul fichier qui connaît à la fois `core/` et `adapters/`.
 
 ### `app/api/webhook/route.ts`
 
-Point d'entrée unique. Parse le JSON entrant, appelle `parseIncoming()`, délègue au use case `handleIncomingMessage` (importé depuis `config/container.ts`), puis mappe le résultat (`'ok' | 'rate_limited'`) vers une `Response` HTTP. Ne contient aucune logique métier.
+Point d'entrée du webhook Wazender. Vérifie d'abord `isAuthorizedWebhookRequest()` (401 si le `?token=` est absent/incorrect), parse le JSON entrant, appelle `parseIncoming()`, délègue au use case `handleIncomingMessage` (importé depuis `config/container.ts`), puis mappe le résultat (`'ok' | 'rate_limited'`) vers une `Response` HTTP. Ne contient aucune logique métier.
+
+### `app/api/health/route.ts`
+
+Liveness check pour le monitoring externe : `GET` → `{ status: 'ok' }`, sans authentification ni appel réseau vers Wazender/Supabase/OpenRouter.
+
+### `app/api/cron/purge-old-messages/route.ts`
+
+Déclenché quotidiennement par Vercel Cron (`vercel.json`). Vérifie `isAuthorizedCronRequest()` (401 si le header `Authorization: Bearer <CRON_SECRET>` est absent/incorrect), puis appelle `supabaseConversationRepository.purgeOlderThan(MESSAGE_RETENTION_DAYS)`.
 
 ### `core/use-cases/handle-incoming-message.use-case.ts`
 
@@ -106,6 +121,10 @@ Retourne `null` (et le handler répond 200 immédiatement) dans deux cas :
 - `event !== "messages.received"` (heartbeats, status, etc.)
 - `key.fromMe === true` (messages envoyés par le bot lui-même — évite les boucles infinies)
 
+### `adapters/inbound/wazender/verify-webhook-secret.ts` et `adapters/inbound/cron/verify-cron-secret.ts`
+
+Fonctions pures, testées unitairement, qui comparent respectivement le query param `?token=` et le header `Authorization: Bearer` à la valeur attendue (`WEBHOOK_SECRET` / `CRON_SECRET`). Ne connaissent ni Request ni Response — le mapping vers 401 se fait dans les routes appelantes.
+
 ### `adapters/outbound/wazender/wazender-messaging.adapter.ts`
 
 Implémente `MessagingPort.sendMessage(to, text)` — `POST wasenderapi.com/api/send-message`, lève une erreur si `res.ok === false`.
@@ -119,6 +138,7 @@ Implémente `ConversationRepositoryPort` :
 | `getHistory(phone, limit=20)` | `SELECT role, content WHERE phone=? ORDER BY created_at ASC LIMIT ?` | Retourne `[]` (data ?? []) |
 | `saveMessages(phone, user, assistant)` | `INSERT x2` (user + assistant en même temps) | Silencieux (pas de throw) |
 | `isRateLimited(phone, max=10)` | `COUNT WHERE phone=? AND role='user' AND created_at >= now()-60s` | — |
+| `purgeOlderThan(days=90)` | `DELETE WHERE created_at < now()-days` | Retourne le nombre de lignes supprimées |
 
 Les erreurs Supabase sont silencieuses par design : un échec de sauvegarde ne doit pas bloquer la réponse WhatsApp.
 
@@ -144,6 +164,7 @@ messages (
 
 INDEX idx_messages_phone          ON messages(phone)
 INDEX idx_messages_phone_created  ON messages(phone, created_at DESC)
+INDEX idx_messages_created_at     ON messages(created_at)
 ```
 
 **RLS :** Politique `public_access` ouverte (`USING (true)`). Acceptable car :
@@ -155,6 +176,7 @@ INDEX idx_messages_phone_created  ON messages(phone, created_at DESC)
 | Limite | Valeur | Origine |
 |---|---|---|
 | Historique de conversation | 20 messages | `getHistory(phone, 20)` dans `adapters/outbound/supabase/supabase-conversation-repository.adapter.ts` |
+| Rétention des messages | 90 jours par défaut | `MESSAGE_RETENTION_DAYS` env var, purgé quotidiennement via `/api/cron/purge-old-messages` |
 | Timeout Vercel (hobby) | 10 s | Serverless function limit |
 | Timeout Vercel (pro) | 60 s | Serverless function limit |
 | Modèle par défaut | `anthropic/claude-sonnet-4-5` | `AI_MODEL` env var |

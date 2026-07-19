@@ -15,7 +15,7 @@ npm run check      # lint + typecheck
 
 Raccourcis Makefile disponibles : `make dev`, `make build`, `make lint`, `make check`, `make webhook` (envoie un curl de test au webhook local).
 
-`npm test` (Vitest) runs the unit tests — `adapters/inbound/wazender/parse-incoming.test.ts` and `core/use-cases/handle-incoming-message.use-case.test.ts`.
+`npm test` (Vitest) runs the unit tests — pure functions and use cases are tested in isolation (parsing, secret checks, `requireEnv`, the use case with fake adapters), colocated as `*.test.ts` next to the source file.
 
 ## Pre-commit hooks
 
@@ -36,13 +36,15 @@ Le déploiement en production est géré par **Vercel** directement depuis GitHu
 
 ## Architecture
 
-**Minimal Next.js 16 app — no UI, only one API route — built as a hexagonal (ports & adapters) application.** See `docs/ARCHITECTURE.md` for the full breakdown.
+**Minimal Next.js 16 app — no UI, three API routes — built as a hexagonal (ports & adapters) application.** See `docs/ARCHITECTURE.md` for the full breakdown.
 
 ```
 app/
-  api/webhook/route.ts   — POST: thin HTTP adapter, parses the request and delegates
-  layout.tsx             — minimal root layout
-  page.tsx               — status page only
+  api/webhook/route.ts                    — POST: thin HTTP adapter, verifies ?token=, parses and delegates
+  api/health/route.ts                     — GET: liveness check for external monitoring
+  api/cron/purge-old-messages/route.ts    — GET: Vercel Cron, purges messages past the retention window
+  layout.tsx                              — minimal root layout
+  page.tsx                                — status page only
 core/
   domain/conversation.ts                       — ChatMessage, IncomingMessage
   ports/inbound/handle-incoming-message.port.ts — use case contract
@@ -50,13 +52,17 @@ core/
   use-cases/handle-incoming-message.use-case.ts — business logic (rate limit → history → LLM → send → save)
 adapters/
   inbound/wazender/parse-incoming.ts                              — WazenderWebhookPayload → IncomingMessage
+  inbound/wazender/verify-webhook-secret.ts                       — checks the webhook's ?token=
+  inbound/cron/verify-cron-secret.ts                                — checks the cron route's Authorization header
   outbound/wazender/wazender-messaging.adapter.ts                 — implements MessagingPort
-  outbound/supabase/supabase-conversation-repository.adapter.ts   — implements ConversationRepositoryPort
+  outbound/supabase/supabase-conversation-repository.adapter.ts   — implements ConversationRepositoryPort (incl. purgeOlderThan)
   outbound/openrouter/openrouter-ai-responder.adapter.ts          — implements AiResponderPort
 config/
+  env.ts                 — requireEnv(): fail-fast validation for required env vars
   container.ts           — composition root: wires the 3 outbound adapters into the use case
 supabase/
-  migration.sql          — single `messages` table, indexed by phone
+  migration.sql          — single `messages` table, indexed by phone and by created_at
+vercel.json               — Vercel Cron schedule for the purge endpoint
 ```
 
 Dependency rule: `core/` never imports from `adapters/`. Only `config/container.ts` knows both.
@@ -90,6 +96,7 @@ const openrouter = createOpenAI({
 
 ```
 POST /api/webhook                          — app/api/webhook/route.ts (inbound HTTP adapter)
+  → isAuthorizedWebhookRequest()            — 401 if ?token= doesn't match WEBHOOK_SECRET
   → parseIncoming()                        — filter fromMe=true and non-message events
   → handleIncomingMessage.execute()        — core/use-cases/handle-incoming-message.use-case.ts
       → conversationRepository.isRateLimited(phone)
@@ -97,6 +104,12 @@ POST /api/webhook                          — app/api/webhook/route.ts (inbound
       → aiResponder.reply()                        — Claude via OpenRouter with history as context
       → messaging.sendMessage(phone)                — Wazender API (wasenderapi.com)
       → conversationRepository.saveMessages()       — persist user + assistant messages to Supabase
+
+GET /api/health                            — liveness check, no downstream calls
+
+GET /api/cron/purge-old-messages           — Vercel Cron (daily, see vercel.json)
+  → isAuthorizedCronRequest()               — 401 if Authorization header doesn't match CRON_SECRET
+  → conversationRepository.purgeOlderThan(MESSAGE_RETENTION_DAYS)
 ```
 
 ## Key env vars
@@ -106,6 +119,9 @@ POST /api/webhook                          — app/api/webhook/route.ts (inbound
 | `WAZENDER_API_KEY` | `adapters/outbound/wazender/wazender-messaging.adapter.ts` — Bearer token for Wazender API |
 | `OPENROUTER_API_KEY` | `adapters/outbound/openrouter/openrouter-ai-responder.adapter.ts` — OpenRouter auth |
 | `SUPABASE_URL` + `SUPABASE_ANON_KEY` | `adapters/outbound/supabase/supabase-conversation-repository.adapter.ts` |
+| `WEBHOOK_SECRET` | `app/api/webhook/route.ts` — required, checked against the `?token=` query param |
+| `CRON_SECRET` | `app/api/cron/purge-old-messages/route.ts` — required, checked against the `Authorization: Bearer` header |
+| `MESSAGE_RETENTION_DAYS` | Optional, defaults to `90` |
 | `AI_MODEL` | Optional, defaults to `anthropic/claude-sonnet-4-5` |
 | `SYSTEM_PROMPT` | Optional, controls bot persona |
 
@@ -114,6 +130,7 @@ POST /api/webhook                          — app/api/webhook/route.ts (inbound
 Single table: `messages(id, phone, role, content, created_at)`.
 No auth, RLS with open public policy (`USING (true)`).
 History is fetched per `phone` number, last 20 messages, ordered ascending.
+Messages older than `MESSAGE_RETENTION_DAYS` (default 90) are purged daily.
 Run `supabase/migration.sql` in the Supabase SQL editor to initialize.
 
 ## Wazender webhook payload

@@ -8,9 +8,11 @@
 5. [Filtrer certains messages](#filtrer-certains-messages)
 6. [Changer la profondeur d'historique](#changer-la-profondeur-dhistorique)
 7. [Ajouter des réponses automatiques](#ajouter-des-réponses-automatiques)
-8. [Déployer une modification](#déployer-une-modification)
-9. [Tester en local](#tester-en-local)
-10. [Variables d'environnement](#variables-denvironnement)
+8. [Sécuriser le webhook](#sécuriser-le-webhook)
+9. [Politique de rétention des messages](#politique-de-rétention-des-messages)
+10. [Déployer une modification](#déployer-une-modification)
+11. [Tester en local](#tester-en-local)
+12. [Variables d'environnement](#variables-denvironnement)
 
 ---
 
@@ -39,8 +41,9 @@ POST /api/webhook  (ton serveur)
 | `app/api/webhook/route.ts` | Point d'entrée HTTP — parse la requête, délègue, mappe la réponse |
 | `core/use-cases/handle-incoming-message.use-case.ts` | Logique métier — orchestre le flow (c'est ici qu'on ajoute des règles) |
 | `adapters/inbound/wazender/parse-incoming.ts` | Traduit le webhook Wazender en message du domaine |
+| `adapters/inbound/wazender/verify-webhook-secret.ts` | Vérifie le `?token=` du webhook |
 | `adapters/outbound/wazender/wazender-messaging.adapter.ts` | Envoie les réponses sur WhatsApp |
-| `adapters/outbound/supabase/supabase-conversation-repository.adapter.ts` | Lit et écrit l'historique des conversations |
+| `adapters/outbound/supabase/supabase-conversation-repository.adapter.ts` | Lit, écrit et purge l'historique des conversations |
 
 ---
 
@@ -223,6 +226,33 @@ async execute({ phone, text }: IncomingMessage): Promise<HandleIncomingMessageOu
 
 ---
 
+## Sécuriser le webhook
+
+Wazender ne fournit pas encore de signature HMAC sur ses webhooks. Le bot se protège avec un secret partagé : l'URL configurée chez Wazender doit inclure `?token=<WEBHOOK_SECRET>`.
+
+1. Génère une valeur forte : `openssl rand -hex 32`
+2. Mets-la dans `WEBHOOK_SECRET` (`.env` en local, variable d'environnement Vercel/Docker en prod)
+3. Configure l'URL complète chez Wazender : `https://ton-domaine/api/webhook?token=<la-valeur>`
+
+Sans ce paramètre (ou avec la mauvaise valeur), le webhook répond `401 unauthorized` sans traiter le message. Voir [`docs/SECURITY.md`](./docs/SECURITY.md) pour le détail de la mitigation.
+
+---
+
+## Politique de rétention des messages
+
+Les messages sont automatiquement purgés après `MESSAGE_RETENTION_DAYS` jours (défaut : 90) via un cron quotidien (`/api/cron/purge-old-messages`, protégé par `CRON_SECRET`).
+
+- **Sur Vercel** : le cron est déclaré dans `vercel.json` et s'active automatiquement au déploiement — rien à faire.
+- **En self-host Docker** : Vercel Cron n'existe pas ; il faut déclencher l'endpoint toi-même, par exemple avec une entrée crontab :
+
+```bash
+0 3 * * * curl -s https://ton-domaine/api/cron/purge-old-messages -H "Authorization: Bearer $CRON_SECRET"
+```
+
+Pour changer la durée de rétention, modifie `MESSAGE_RETENTION_DAYS` (aucun redéploiement de code nécessaire).
+
+---
+
 ## Déployer une modification
 
 ```bash
@@ -248,9 +278,9 @@ Lance le serveur :
 npm run dev
 ```
 
-Simule un message WhatsApp entrant :
+Simule un message WhatsApp entrant (le `?token=` doit correspondre à `WEBHOOK_SECRET` dans `.env`) :
 ```bash
-curl -X POST http://localhost:3000/api/webhook \
+curl -X POST "http://localhost:3000/api/webhook?token=$WEBHOOK_SECRET" \
   -H "Content-Type: application/json" \
   -d '{
     "event": "messages.received",
@@ -267,12 +297,13 @@ curl -X POST http://localhost:3000/api/webhook \
       }
     }
   }'
+# ou simplement : make webhook (lit le token depuis .env)
 ```
 
-Vérifie que le bot a répondu et que les messages sont en base :
+Vérifie que le serveur tourne :
 ```bash
-# Voir les messages sauvegardés
-curl http://localhost:3000/api/webhook  # → page de statut
+curl http://localhost:3000/          # page de statut HTML
+curl http://localhost:3000/api/health  # → {"status":"ok"}
 ```
 
 ---
@@ -285,5 +316,8 @@ curl http://localhost:3000/api/webhook  # → page de statut
 | `OPENROUTER_API_KEY` | ✅ | Clé OpenRouter (openrouter.ai/keys) |
 | `SUPABASE_URL` | ✅ | URL du projet Supabase |
 | `SUPABASE_ANON_KEY` | ✅ | Clé anon Supabase |
+| `WEBHOOK_SECRET` | ✅ | Protège `/api/webhook` (`?token=`) |
+| `CRON_SECRET` | ✅ | Protège `/api/cron/purge-old-messages` (header `Authorization`) |
 | `AI_MODEL` | ❌ | Modèle AI (défaut : `anthropic/claude-sonnet-4-5`) |
 | `SYSTEM_PROMPT` | ❌ | Persona du bot (défaut : assistant généraliste) |
+| `MESSAGE_RETENTION_DAYS` | ❌ | Jours avant purge des messages (défaut : `90`) |

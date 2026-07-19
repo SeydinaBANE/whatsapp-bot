@@ -33,7 +33,10 @@ POST /api/webhook  ←── ton serveur
 - **Détection de langue** — répond dans la langue de l'utilisateur par défaut
 - **Persona configurable** — system prompt modifiable sans redéploiement
 - **Modèle interchangeable** — change de Claude à GPT-4o en modifiant une variable
-- **Zéro UI** — uniquement un endpoint webhook, pas de surface d'attaque inutile
+- **Zéro UI** — uniquement des endpoints API, pas de surface d'attaque inutile
+- **Webhook protégé** — secret partagé (`WEBHOOK_SECRET`) + rate limiting par numéro
+- **Rétention configurable** — purge automatique des messages au-delà de `MESSAGE_RETENTION_DAYS`
+- **Monitoring** — endpoint `/api/health` pour le monitoring externe
 
 ## Stack
 
@@ -70,8 +73,11 @@ cp .env.example .env
 | `OPENROUTER_API_KEY` | ✅ | openrouter.ai/keys |
 | `SUPABASE_URL` | ✅ | URL de ton projet Supabase |
 | `SUPABASE_ANON_KEY` | ✅ | Clé anon Supabase |
+| `WEBHOOK_SECRET` | ✅ | Valeur aléatoire forte (ex: `openssl rand -hex 32`) — protège `/api/webhook` |
+| `CRON_SECRET` | ✅ | Valeur aléatoire forte — protège `/api/cron/purge-old-messages` |
 | `AI_MODEL` | ❌ | Défaut : `anthropic/claude-sonnet-4-5` |
 | `SYSTEM_PROMPT` | ❌ | Défaut : assistant généraliste multilingue |
+| `MESSAGE_RETENTION_DAYS` | ❌ | Défaut : `90` (jours avant purge des messages) |
 
 **3. Créer la table en base**
 
@@ -89,7 +95,7 @@ make dev
 
 ```bash
 make webhook
-# équivalent curl vers http://localhost:3000/api/webhook
+# équivalent curl vers http://localhost:3000/api/webhook?token=$WEBHOOK_SECRET (lu depuis .env)
 ```
 
 ## Déploiement
@@ -116,13 +122,17 @@ make docker-build && make docker-run
 
 **Configurer le webhook dans Wazender**
 
-Après déploiement, copie l'URL de ton serveur et colle-la dans wasenderapi.com → ta session → Webhook :
+Après déploiement, copie l'URL de ton serveur (avec le token `WEBHOOK_SECRET`) et colle-la dans wasenderapi.com → ta session → Webhook :
 
 ```
-https://ton-projet.vercel.app/api/webhook
+https://ton-projet.vercel.app/api/webhook?token=<WEBHOOK_SECRET>
 # ou
-https://ton-domaine.com/api/webhook
+https://ton-domaine.com/api/webhook?token=<WEBHOOK_SECRET>
 ```
+
+**Vercel Cron (purge automatique)**
+
+Sur Vercel, `vercel.json` déclare déjà le cron (`/api/cron/purge-old-messages`, quotidien à 03:00 UTC) — vérifie dans **Settings → Cron Jobs** qu'il apparaît après le premier déploiement. En self-host Docker, ce cron n'existe pas : il faut appeler l'endpoint toi-même (crontab système, scheduler externe…) avec le header `Authorization: Bearer <CRON_SECRET>`.
 
 ## Personnaliser le bot
 
@@ -140,17 +150,18 @@ AI_MODEL=google/gemini-2.0-flash-001
 AI_MODEL=meta-llama/llama-3.3-70b-instruct
 ```
 
-**Ajouter des règles** — édite `app/api/webhook/route.ts` après `parseIncoming()` :
+**Ajouter des règles** — la logique métier vit dans `core/use-cases/handle-incoming-message.use-case.ts` (pas dans `route.ts`, qui ne fait que router la requête HTTP) :
 
 ```ts
-// Ignorer certains numéros
-if (incoming.phone === '+221700000000') return new Response('ignored', { status: 200 })
+async execute({ phone, text }: IncomingMessage): Promise<HandleIncomingMessageOutcome> {
+  // Répondre hors horaires
+  const heure = new Date().getHours()
+  if (heure < 8 || heure > 18) {
+    await deps.messaging.sendMessage(phone, 'Nous sommes fermés. Horaires : 8h-18h, lun-ven.')
+    return 'ok'
+  }
 
-// Répondre hors horaires
-const heure = new Date().getHours()
-if (heure < 8 || heure > 18) {
-  await sendMessage(incoming.phone, 'Nous sommes fermés. Horaires : 8h-18h, lun-ven.')
-  return new Response('ok', { status: 200 })
+  // ... suite normale (rate limit, historique, LLM, envoi, sauvegarde)
 }
 ```
 

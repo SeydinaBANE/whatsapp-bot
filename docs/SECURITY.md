@@ -11,16 +11,20 @@
 | Dépendances | ✅ | `npm audit` : 0 vulnérabilité high/critical |
 | TypeScript strict | ✅ | `"strict": true` dans `tsconfig.json` |
 | CI bloquante | ✅ | Lint + typecheck sur chaque PR |
+| Secret partagé sur le webhook | ✅ | `?token=<WEBHOOK_SECRET>`, voir point 1 |
+| Rate limiting | ✅ | Voir point 3 |
+| Erreurs LLM/Wazender gérées | ✅ | Voir point 4 |
+| Endpoint de purge protégé | ✅ | `CRON_SECRET` obligatoire, voir point 5 |
 
 ### Points d'attention
 
-#### 1. Pas de validation de signature webhook
+#### 1. Pas de validation de signature webhook — partiellement mitigé
 
-Wazender ne fournit pas (encore) de mécanisme de signature HMAC sur les webhooks. N'importe qui connaissant l'URL peut envoyer un payload forgé et déclencher un appel LLM + une réponse WhatsApp.
+Wazender ne fournit pas (encore) de mécanisme de signature HMAC sur les webhooks. Sans protection, n'importe qui connaissant l'URL pourrait envoyer un payload forgé et déclencher un appel LLM + une réponse WhatsApp.
 
-**Mitigation temporaire :** l'URL du webhook n'est pas publique (Vercel génère une URL non-devinable). Ne pas exposer cette URL publiquement.
+**Mitigation en place :** un secret partagé (`WEBHOOK_SECRET`) est vérifié en query param (`?token=`) avant tout traitement du payload (`adapters/inbound/wazender/verify-webhook-secret.ts`, appelé dans `route.ts`). C'est la seule valeur configurable côté Wazender (l'URL de destination). Combiné à une URL non-devinable, cela réduit le risque à la divulgation du token lui-même.
 
-**Mitigation à terme :** si Wazender ajoute la signature, implémenter la vérification dans `route.ts` avant `parseIncoming()` :
+**Limite connue :** ce n'est pas une signature du corps du message (HMAC), donc pas de garantie d'intégrité — seulement d'authentification de la source. Si Wazender ajoute un jour une signature HMAC, la migrer serait préférable :
 
 ```typescript
 // Exemple si Wazender ajoute X-Wazender-Signature
@@ -36,42 +40,19 @@ Les variables Supabase étaient nommées `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBL
 
 **Statut :** renommées en `SUPABASE_URL` / `SUPABASE_ANON_KEY` (voir `CHANGELOG.md` — v1.1.0). Impact réel avant correction : nul, car la clé `anon` Supabase est de toute façon faite pour être publique (soumise aux politiques RLS) et la politique actuelle est ouverte (`USING (true)`).
 
-#### 3. Pas de rate limiting
+#### 3. Pas de rate limiting — résolu
 
-Un utilisateur ou un script peut envoyer des milliers de messages et générer autant d'appels LLM (coût OpenRouter) + d'écritures Supabase.
+Un utilisateur ou un script pourrait envoyer des milliers de messages et générer autant d'appels LLM (coût OpenRouter) + d'écritures Supabase.
 
-**Mitigation simple** à ajouter dans `route.ts` :
+**Statut :** `conversationRepository.isRateLimited(phone)` (max 10 msg/minute par numéro) est vérifié en tout premier dans `core/use-cases/handle-incoming-message.use-case.ts`, avant tout appel LLM (voir `CHANGELOG.md` — v1.1.0).
 
-```typescript
-// Limite par numéro : max 10 msg/minute via Supabase
-const recent = await supabase
-  .from('messages')
-  .select('id', { count: 'exact', head: true })
-  .eq('phone', phone)
-  .eq('role', 'user')
-  .gte('created_at', new Date(Date.now() - 60_000).toISOString())
+#### 4. Pas de gestion des erreurs LLM vers l'utilisateur — résolu
 
-if ((recent.count ?? 0) >= 10) {
-  return new Response('rate limited', { status: 200 })
-}
-```
+Si `aiResponder.reply()` ou `messaging.sendMessage()` échoue (timeout, quota dépassé, Wazender indisponible), l'erreur est loggée (`console.error`) et un message d'excuse est envoyé à l'utilisateur — le webhook répond quand même `200 ok` pour éviter que Wazender ne rejoue la requête en boucle (voir `core/use-cases/handle-incoming-message.use-case.ts`, `CHANGELOG.md` — v1.1.0).
 
-#### 4. Pas de gestion des erreurs LLM vers l'utilisateur
+#### 5. Endpoint de purge des messages — protégé par design
 
-Si `generateText()` échoue (timeout, quota dépassé), le webhook retourne 500. Wazender va réessayer, potentiellement en boucle. L'utilisateur ne reçoit aucun message d'erreur.
-
-**Amélioration recommandée :**
-
-```typescript
-try {
-  const { text: reply } = await generateText({ ... })
-  await sendMessage(phone, reply)
-  await saveMessages(phone, text, reply)
-} catch {
-  await sendMessage(phone, "Désolé, je rencontre un problème technique. Réessaie dans quelques instants.")
-}
-return new Response('ok', { status: 200 })
-```
+`/api/cron/purge-old-messages` (voir [Architecture](./ARCHITECTURE.md) et [API](./API.md#get-apicronpurge-old-messages)) supprime des données — un endpoint destructeur ne doit jamais tourner sans authentification. `CRON_SECRET` est obligatoire (`requireEnv`, pas de valeur par défaut) : sans cette variable, le module ne charge pas et l'endpoint est indisponible plutôt que de tourner en clair.
 
 ## Dépendances — état de l'audit
 

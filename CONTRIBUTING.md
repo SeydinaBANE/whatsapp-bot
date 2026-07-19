@@ -51,7 +51,7 @@ Si l'un des deux échoue, le commit est annulé. Corrige les erreurs puis recomm
 Le pipeline GitHub Actions (`.github/workflows/ci.yml`) s'exécute sur chaque push et PR vers `main` :
 
 ```
-lint → typecheck → build
+lint → typecheck → test → build
 ```
 
 La PR ne peut pas être mergée si la CI échoue.
@@ -95,18 +95,25 @@ Consulte [`DOCUMENTATION.md`](./DOCUMENTATION.md) pour des exemples concrets (fi
 ## Structure des fichiers
 
 ```
-app/api/webhook/route.ts                                          — adapter HTTP entrant (thin)
+app/api/webhook/route.ts                                          — adapter HTTP entrant (thin), vérifie ?token=
+app/api/health/route.ts                                            — liveness check
+app/api/cron/purge-old-messages/route.ts                           — purge programmée (rétention)
 core/
   domain/conversation.ts                                          — types du domaine
   ports/{inbound,outbound}/*.ts                                    — interfaces (contrats)
   use-cases/handle-incoming-message.use-case.ts                    — logique métier (modifier ici en priorité)
 adapters/
   inbound/wazender/parse-incoming.ts                               — traduction webhook Wazender → domaine
+  inbound/wazender/verify-webhook-secret.ts                        — vérifie le ?token= du webhook
+  inbound/cron/verify-cron-secret.ts                                — vérifie l'Authorization du cron
   outbound/wazender/wazender-messaging.adapter.ts                  — envoi WhatsApp
-  outbound/supabase/supabase-conversation-repository.adapter.ts    — historique + rate limit
+  outbound/supabase/supabase-conversation-repository.adapter.ts    — historique + rate limit + purge
   outbound/openrouter/openrouter-ai-responder.adapter.ts           — génération LLM
-config/container.ts        — composition root (câble les adapters au use case)
+config/
+  env.ts                    — requireEnv() : validation des variables requises
+  container.ts              — composition root (câble les adapters au use case)
 supabase/migration.sql     — schéma de la base
+vercel.json                — planification du cron de purge
 docs/                      — documentation technique
   ARCHITECTURE.md          — diagrammes et décisions de conception
   API.md                   — référence des endpoints

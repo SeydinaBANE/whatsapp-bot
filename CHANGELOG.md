@@ -5,6 +5,22 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
 ---
 
+## [1.3.0] — 2026-07-19
+
+### Ajouté
+- Secret partagé sur le webhook (`WEBHOOK_SECRET`, query param `?token=`) — mitigation applicative en attendant une signature HMAC côté Wazender
+- `requireEnv()` (`config/env.ts`) : validation explicite des variables d'environnement requises, adoptée dans les 3 adapters outbound
+- Endpoint `GET /api/health` — liveness check pour le monitoring externe, sans dépendance à Wazender/Supabase/OpenRouter
+- Politique de rétention des messages : `purgeOlderThan(days)` sur `ConversationRepositoryPort`, endpoint `GET /api/cron/purge-old-messages` protégé par `CRON_SECRET`, cron Vercel quotidien (`vercel.json`), durée configurable via `MESSAGE_RETENTION_DAYS` (défaut 90 jours)
+- Nouvel index `idx_messages_created_at` dans `supabase/migration.sql` pour la purge
+
+### Modifié
+- `docs/SECURITY.md` : points sur le rate limiting, la gestion des erreurs LLM et les variables `NEXT_PUBLIC_` marqués résolus ; nouveau point sur la protection de l'endpoint de purge
+- `make webhook` lit désormais `WEBHOOK_SECRET` depuis `.env` automatiquement
+- Documentation (`README.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `DOCUMENTATION.md`, `docs/`) mise à jour pour les 3 nouveaux endpoints et variables
+
+---
+
 ## [1.2.0] — 2026-07-19
 
 ### Modifié

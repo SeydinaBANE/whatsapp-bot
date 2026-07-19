@@ -4,6 +4,10 @@
 
 Point d'entrée unique de l'application. Reçoit les événements Wazender et déclenche le flow de réponse IA.
 
+### Authentification
+
+Protégé par un secret partagé passé en query param : `?token=<WEBHOOK_SECRET>`. Vérifié par `isAuthorizedWebhookRequest()` (`adapters/inbound/wazender/verify-webhook-secret.ts`) avant même le parsing du corps — retourne `401` si absent ou incorrect. C'est une mitigation applicative en attendant que Wazender supporte une signature HMAC (voir [Sécurité](./SECURITY.md#1-pas-de-validation-de-signature-webhook)).
+
 ### Requête
 
 **Headers requis :**
@@ -35,16 +39,18 @@ Content-Type: application/json
 
 | Statut | Corps | Condition |
 |---|---|---|
+| `401` | `unauthorized` | `?token=` absent ou différent de `WEBHOOK_SECRET` |
+| `400` | `bad request` | Corps JSON invalide |
 | `200 OK` | `ignored` | `event !== "messages.received"` ou `fromMe === true` ou corps vide |
-| `200 OK` | `ok` | Message traité et réponse envoyée |
-| `500` | — | Erreur non gérée (LLM timeout, Wazender indisponible…) |
+| `200 OK` | `rate limited` | Numéro au-delà de la limite (10 msg/min par défaut) |
+| `200 OK` | `ok` | Message traité et réponse envoyée (ou erreur LLM/Wazender avalée avec message d'excuse) |
 
 > Le webhook retourne toujours 200 pour les cas ignorés. Wazender réessaie les envois si le serveur répond autre chose que 2xx.
 
 ### Exemple — message entrant valide
 
 ```bash
-curl -X POST https://ton-projet.vercel.app/api/webhook \
+curl -X POST "https://ton-projet.vercel.app/api/webhook?token=$WEBHOOK_SECRET" \
   -H "Content-Type: application/json" \
   -d '{
     "event": "messages.received",
@@ -68,18 +74,66 @@ Réponse : `ok` (200)
 ### Exemple — événement ignoré
 
 ```bash
-curl -X POST https://ton-projet.vercel.app/api/webhook \
+curl -X POST "https://ton-projet.vercel.app/api/webhook?token=$WEBHOOK_SECRET" \
   -H "Content-Type: application/json" \
   -d '{ "event": "connection.update", "timestamp": 1748000000000, "data": {} }'
 ```
 
 Réponse : `ignored` (200)
 
+### Exemple — token absent ou invalide
+
+```bash
+curl -X POST https://ton-projet.vercel.app/api/webhook \
+  -H "Content-Type: application/json" \
+  -d '{ "event": "messages.received", ... }'
+```
+
+Réponse : `unauthorized` (401)
+
 ### Exemple — test en local avec Make
 
 ```bash
 make webhook
 ```
+
+---
+
+## `GET /api/health`
+
+Endpoint de liveness pour le monitoring externe (UptimeRobot, Vercel Monitoring…). Aucune authentification, aucun appel réseau vers Wazender/Supabase/OpenRouter.
+
+```bash
+curl https://ton-projet.vercel.app/api/health
+```
+
+Réponse : `{ "status": "ok" }` (200)
+
+---
+
+## `GET /api/cron/purge-old-messages`
+
+Supprime les messages plus vieux que `MESSAGE_RETENTION_DAYS` jours (défaut : 90). Déclenché quotidiennement par Vercel Cron (`vercel.json`), à 03:00 UTC.
+
+### Authentification
+
+Header `Authorization: Bearer <CRON_SECRET>`, vérifié par `isAuthorizedCronRequest()` (`adapters/inbound/cron/verify-cron-secret.ts`). Sur Vercel, le header est injecté automatiquement par le scheduler Cron si `CRON_SECRET` est défini dans les variables d'environnement du projet.
+
+### Réponses
+
+| Statut | Corps | Condition |
+|---|---|---|
+| `401` | `unauthorized` | Header `Authorization` absent ou incorrect |
+| `200 OK` | `{ "purged": <n> }` | `n` messages supprimés |
+
+### Exemple
+
+```bash
+curl https://ton-projet.vercel.app/api/cron/purge-old-messages \
+  -H "Authorization: Bearer $CRON_SECRET"
+```
+
+> Déploiement Docker/self-host : Vercel Cron n'existe pas en dehors de Vercel — il faut déclencher cet endpoint soi-même (crontab système, scheduler externe…).
 
 ---
 
