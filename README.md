@@ -68,8 +68,8 @@ cp .env.example .env
 |---|---|---|
 | `WAZENDER_API_KEY` | ✅ | wasenderapi.com → Sessions → clique sur 🔑 |
 | `OPENROUTER_API_KEY` | ✅ | openrouter.ai/keys |
-| `NEXT_PUBLIC_SUPABASE_URL` | ✅ | URL de ton projet Supabase |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | Clé anon Supabase |
+| `SUPABASE_URL` | ✅ | URL de ton projet Supabase |
+| `SUPABASE_ANON_KEY` | ✅ | Clé anon Supabase |
 | `AI_MODEL` | ❌ | Défaut : `anthropic/claude-sonnet-4-5` |
 | `SYSTEM_PROMPT` | ❌ | Défaut : assistant généraliste multilingue |
 

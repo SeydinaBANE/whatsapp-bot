@@ -30,13 +30,11 @@ const expected = crypto.createHmac('sha256', process.env.WEBHOOK_SECRET!).update
 if (sig !== expected) return new Response('unauthorized', { status: 401 })
 ```
 
-#### 2. Variables `NEXT_PUBLIC_` côté serveur
+#### 2. Variables `NEXT_PUBLIC_` côté serveur — résolu
 
-Les variables Supabase sont nommées `NEXT_PUBLIC_SUPABASE_URL` et `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Le préfixe `NEXT_PUBLIC_` les expose au bundle client JavaScript — or ici elles ne sont utilisées que côté serveur (`adapters/outbound/supabase/supabase-conversation-repository.adapter.ts` est importé uniquement via `config/container.ts`, jamais côté client).
+Les variables Supabase étaient nommées `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`, alors qu'elles ne sont utilisées que côté serveur (`adapters/outbound/supabase/supabase-conversation-repository.adapter.ts`, importé uniquement via `config/container.ts`, jamais côté client). Le préfixe `NEXT_PUBLIC_` les aurait exposées inutilement au bundle client JavaScript.
 
-**Impact réel :** la clé `anon` Supabase est faite pour être publique (elle est soumise aux politiques RLS). La politique actuelle est ouverte (`USING (true)`), donc cela n'expose pas de données supplémentaires.
-
-**Recommandation :** renommer en `SUPABASE_URL` / `SUPABASE_ANON_KEY` pour clarifier qu'elles sont serveur-only, et mettre à jour `adapters/outbound/supabase/supabase-conversation-repository.adapter.ts` en conséquence.
+**Statut :** renommées en `SUPABASE_URL` / `SUPABASE_ANON_KEY` (voir `CHANGELOG.md` — v1.1.0). Impact réel avant correction : nul, car la clé `anon` Supabase est de toute façon faite pour être publique (soumise aux politiques RLS) et la politique actuelle est ouverte (`USING (true)`).
 
 #### 3. Pas de rate limiting
 

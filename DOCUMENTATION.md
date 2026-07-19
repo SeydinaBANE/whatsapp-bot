@@ -283,7 +283,7 @@ curl http://localhost:3000/api/webhook  # → page de statut
 |---|---|---|
 | `WAZENDER_API_KEY` | ✅ | Clé de session Wazender (wasenderapi.com → Sessions → 🔑) |
 | `OPENROUTER_API_KEY` | ✅ | Clé OpenRouter (openrouter.ai/keys) |
-| `NEXT_PUBLIC_SUPABASE_URL` | ✅ | URL du projet Supabase |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | Clé anon Supabase |
+| `SUPABASE_URL` | ✅ | URL du projet Supabase |
+| `SUPABASE_ANON_KEY` | ✅ | Clé anon Supabase |
 | `AI_MODEL` | ❌ | Modèle AI (défaut : `anthropic/claude-sonnet-4-5`) |
 | `SYSTEM_PROMPT` | ❌ | Persona du bot (défaut : assistant généraliste) |

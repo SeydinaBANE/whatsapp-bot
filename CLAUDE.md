@@ -105,7 +105,7 @@ POST /api/webhook                          — app/api/webhook/route.ts (inbound
 |---|---|
 | `WAZENDER_API_KEY` | `adapters/outbound/wazender/wazender-messaging.adapter.ts` — Bearer token for Wazender API |
 | `OPENROUTER_API_KEY` | `adapters/outbound/openrouter/openrouter-ai-responder.adapter.ts` — OpenRouter auth |
-| `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `adapters/outbound/supabase/supabase-conversation-repository.adapter.ts` |
+| `SUPABASE_URL` + `SUPABASE_ANON_KEY` | `adapters/outbound/supabase/supabase-conversation-repository.adapter.ts` |
 | `AI_MODEL` | Optional, defaults to `anthropic/claude-sonnet-4-5` |
 | `SYSTEM_PROMPT` | Optional, controls bot persona |
 

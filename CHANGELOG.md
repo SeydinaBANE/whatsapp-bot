@@ -5,6 +5,18 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
 ---
 
+## [1.2.0] — 2026-07-19
+
+### Modifié
+- Migration vers une architecture hexagonale (ports & adapters) : `lib/` remplacé par `core/` (domain, ports, use-cases) et `adapters/` (inbound/outbound), avec `config/container.ts` comme composition root
+- `app/api/webhook/route.ts` devient un adapter HTTP fin — la logique métier vit désormais dans `core/use-cases/handle-incoming-message.use-case.ts`
+- Documentation (`CLAUDE.md`, `CONTRIBUTING.md`, `DOCUMENTATION.md`, `docs/`) mise à jour pour refléter la nouvelle structure, et les dernières références résiduelles à `NEXT_PUBLIC_SUPABASE_*` corrigées en `SUPABASE_URL` / `SUPABASE_ANON_KEY`
+
+### Ajouté
+- Tests unitaires du use case (`core/use-cases/handle-incoming-message.use-case.test.ts`) avec adapters fakes
+
+---
+
 ## [1.1.0] — 2026-05-25
 
 ### Ajouté

@@ -177,4 +177,4 @@ INDEX idx_messages_phone_created  ON messages(phone, created_at DESC)
 ### Supabase
 
 - **Client** : `@supabase/supabase-js` v2, mode anon
-- **Accès** : URL + clé anon (`NEXT_PUBLIC_SUPABASE_*`)
+- **Accès** : URL + clé anon (`SUPABASE_URL` / `SUPABASE_ANON_KEY`, server-only)
